@@ -1,0 +1,2 @@
+# sofunBench
+Benchmarking of rsofun
