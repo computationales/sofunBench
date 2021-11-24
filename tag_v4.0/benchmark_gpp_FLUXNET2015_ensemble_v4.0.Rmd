@@ -1,5 +1,5 @@
 ---
-title: "Benchmark rsofun tag v3.4.2"
+title: "Benchmark rsofun tag v4.0"
 output:
   html_document:
     toc: true
@@ -9,11 +9,10 @@ output:
 
 ```{r setup, include=FALSE}
 library(rsofun)
-library(dplyr)
-library(readr)
+library(tidyverse)
 library(ingestr)
-library(ggplot2)
 library(knitr)
+library(lubridate)
 ```
 
 ## Description
@@ -55,7 +54,8 @@ df_drivers_fluxnet2015 <- df_drivers_fluxnet2015 %>%
       dplyr::select(-forcing),
     by = "sitename"
   ) %>% 
-  ungroup()
+  ungroup() %>% 
+  rename(site_info = siteinfo, params_soil = df_soiltexture)
 
 # save(df_drivers_fluxnet2015, file = "~/data/rsofun_benchmarking/df_drivers_fluxnet2015.Rdata")
 ```
@@ -78,35 +78,18 @@ calibsites <- siteinfo_fluxnet2015 %>%
   pull(sitename)
 ```
 
-Define calibration settings.
-```{r}
-settings_calib <- list(
-  method              = "gensa",
-  targetvars          = c("gpp"),
-  timescale           = list( gpp = "d" ),
-  maxit               = 5,
-  sitenames           = calibsites,
-  metric              = "rmse",
-  dir_results         = "./",
-  name                = "FULL",
-  par                 = list( kphio       = list( lower=0.03, upper=0.1, init= 0.05 ),
-                              soilm_par_a = list( lower=0.0,  upper=1.0, init=0.0 ),
-                              soilm_par_b = list( lower=0.0,  upper=1.5, init=0.6 ) )
- )
-```
-
 Use the [ingestr](https://github.com/stineb/ingestr) package once again, now for collecting calibration target data. I.e., GPP based on the nighttime flux decomposition method.
 ```{r warning=FALSE, message=FALSE}
-settings_ingestr_fluxnet <- list(
-  dir_hh = "~/data/FLUXNET-2015_Tier1/20191024/HH/", 
-  getswc = FALSE,
-  filter_ntdt = TRUE,
-  threshold_GPP = 0.8,
-  remove_neg = FALSE
-  )
-
 filn <- "~/data/rsofun_benchmarking/ddf_fluxnet_gpp.Rdata"
 if (!file.exists(filn)){
+  settings_ingestr_fluxnet <- list(
+    dir_hh = "~/data/FLUXNET-2015_Tier1/20191024/HH/", 
+    getswc = FALSE,
+    filter_ntdt = TRUE,
+    threshold_GPP = 0.8,
+    remove_neg = FALSE
+    )
+
   ddf_fluxnet_gpp <- ingestr::ingest(
     siteinfo = siteinfo_fluxnet2015 %>% 
       dplyr::filter(sitename %in% calibsites),
@@ -123,55 +106,106 @@ if (!file.exists(filn)){
 }
 ```
 
-Change name after update implemented with v3.4.2.
+Define calibration settings.
+```{r}
+# # bayesiantools
+# settings_calib <- list(
+#   method      = "bayesiantools",
+#   targetvars  = c("gpp"),
+#   timescale   = list(targets_obs = "d"),
+#   metric      = cost_rmse_fullstack,
+#   dir_results = "./",
+#   name        = "v4.0",
+#   control = list(
+#     sampler = "DEzs",
+#     settings = list(
+#       burnin = 1000,
+#       iterations = 5000
+#     )
+#   ),
+#   par = list(
+#     kphio = list(lower=0.04, upper=0.1, init = 0.05),
+#     a = list(lower=0, upper=5, init = 3.5),
+#     b = list(lower=1, upper=5, init=3.5),
+#     
+#     # the two below are not calibrated when using cost_rmse_fullstack
+#     tau = list(lower=0, upper=45, init=15),
+#     shape = list(lower=0, upper=1.0, init=0.1)
+#     )
+# )
+
+# gensa
+settings_calib <- list(
+  method      = "gensa",
+  targetvars  = c("gpp"),
+  timescale   = list(targets_obs = "d"),
+  metric      = cost_rmse_fullstack,
+  dir_results = "./",
+  name        = "v4.0",
+  control = list(
+    max.call = 500,
+    trace.mat = TRUE
+  ),
+  par = list(
+    kphio = list( lower=0.03, upper=0.1, init= 0.05 ),
+    a = list( lower=0.0,  upper=1.0, init=0.0 ),
+    b = list( lower=0.0,  upper=1.5, init=0.6 )
+    )
+)
+```
+
+Change name after update implemented with v4.0.
 ```{r}
 df_drivers_fluxnet2015 <- df_drivers_fluxnet2015 %>% 
   mutate(forcing = purrr::map(forcing, ~rename(., rain = rainf, snow = snowf)))
 ```
 
-
 Calibrate the model.
 ```{r warning=FALSE, message=FALSE}
-set.seed(1982)
-settings_calib <- calib_sofun(
-  df_drivers = dplyr::filter(df_drivers_fluxnet2015, sitename %in% calibsites),  # use only one site
-  ddf_obs = ddf_fluxnet_gpp,
-  settings = settings_calib
-  )
+# gensa
+#      kphio          a          b 
+# 0.08977522 0.51426143 1.45602286 
+
+filn <- "~/sofunBench/tag_v4.0/pars_calib_v4.0_bayesiantools.rds"
+if (!file.exists(filn)){
+  set.seed(1982)
+  pars <- calib_sofun(
+    drivers  = dplyr::filter(df_drivers_fluxnet2015, sitename %in% calibsites),
+    obs      = ddf_fluxnet_gpp,
+    settings = settings_calib
+    )
+  saveRDS(pars, file = filn)
+} else {
+  pars <- read_rds(filn)
+}
 ```
 
 The calibrated parameters are returned by `calib_sofun()` as part of the list:
 ```{r}
-print(settings_calib$par_opt)
-save(settings_calib, file = "./settings_calib.Rdata")
+print(pars$par)
 ```
 
 Update model parameters.
 ```{r}
 params_modl <- list(
-	kphio           = 0.05,
-	soilm_par_a     = 1.0,
-	soilm_par_b     = 0.0,
-	vpdstress_par_a = 9999,
-	vpdstress_par_b = 9999,
-	vpdstress_par_m = 9999,
-  tau_acclim_tempstress = 10,
-  par_shape_tempstress  = 0.0
-	)
-params_modl <- update_params(params_modl, settings_calib)
+    kphio           = pars$par[1],
+    soilm_par_a     = pars$par[2],
+    soilm_par_b     = pars$par[3],
+    tau_acclim_tempstress = 10,  # irrelevant - not calibrated
+    par_shape_tempstress  = 0.1   # irrelevant - not calibrated
+  )
 ```
 
 
 ## Run model
 
 ```{r warning=FALSE, message=FALSE}
-df_output <- runread_pmodel_f(
-     df_drivers_fluxnet2015,
-     params_modl = params_modl, 
-     makecheck = TRUE,
-     parallel = FALSE
-     )
-save(df_output, file = "~/data/rsofun_benchmarking/df_output_v3.4.2.Rdata")
+output <- rsofun::runread_pmodel_f(
+  df_drivers_fluxnet2015,
+  par = params_modl
+  )
+
+saveRDS(output, file = "~/data/rsofun_benchmarking/output_v4.0.rds")
 ```
 
 ## Run evaluation
@@ -194,7 +228,7 @@ Define evaluation settings.
 settings_eval <- list(
   benchmark = list( gpp = c("fluxnet") ),
   sitenames = evalsites,
-  agg       = 8  # An integer specifying the number of days used to define the width of bins for daily data aggregated to several days
+  agg       = 8
   )
 ```
 
@@ -208,7 +242,7 @@ out_eval <- eval_sofun(
   overwrite = TRUE, 
   light = FALSE 
   )
-save(df_output, file = "~/data/rsofun_benchmarking/out_eval_v3.4.2.Rdata")
+saveRDS(df_output, file = "~/data/rsofun_benchmarking/out_eval_v4.0.rds")
 ```
 
 ## Evaluation results
@@ -239,7 +273,7 @@ df_output_allsites <- runread_pmodel_f(
      makecheck = TRUE,
      parallel = FALSE
      )
-save(df_output_allsites, file = "~/data/rsofun_benchmarking/df_output_allsites_v3.4.2.Rdata")
+saveRDS(df_output_allsites, file = "~/data/rsofun_benchmarking/df_output_allsites_v4.0.rds")
 ```
 
 
