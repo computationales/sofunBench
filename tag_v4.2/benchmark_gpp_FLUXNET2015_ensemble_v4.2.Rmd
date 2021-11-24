@@ -1,5 +1,5 @@
 ---
-title: "Benchmark rsofun tag v4.0"
+title: "Benchmark rsofun tag v4.2"
 output:
   html_document:
     toc: true
@@ -8,12 +8,20 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-library(rsofun)
 library(tidyverse)
 library(ingestr)
 library(knitr)
 library(lubridate)
 ```
+
+## Load rsofun
+
+Get rsofun at tag v4.2 and install it.
+```{r}
+# devtools::install_github("computationales/rsofun@v4.2")
+library(rsofun)
+```
+
 
 ## Description
 
@@ -108,65 +116,67 @@ if (!file.exists(filn)){
 
 Define calibration settings.
 ```{r}
-# # bayesiantools
-# settings_calib <- list(
-#   method      = "bayesiantools",
-#   targetvars  = c("gpp"),
-#   timescale   = list(targets_obs = "d"),
-#   metric      = cost_rmse_fullstack,
-#   dir_results = "./",
-#   name        = "v4.0",
-#   control = list(
-#     sampler = "DEzs",
-#     settings = list(
-#       burnin = 1000,
-#       iterations = 5000
-#     )
-#   ),
-#   par = list(
-#     kphio = list(lower=0.04, upper=0.1, init = 0.05),
-#     a = list(lower=0, upper=5, init = 3.5),
-#     b = list(lower=1, upper=5, init=3.5),
-#     
-#     # the two below are not calibrated when using cost_rmse_fullstack
-#     tau = list(lower=0, upper=45, init=15),
-#     shape = list(lower=0, upper=1.0, init=0.1)
-#     )
-# )
-
-# gensa
+# bayesiantools
 settings_calib <- list(
-  method      = "gensa",
+  method      = "bayesiantools",
   targetvars  = c("gpp"),
   timescale   = list(targets_obs = "d"),
   metric      = cost_rmse_fullstack,
   dir_results = "./",
-  name        = "v4.0",
+  name        = "v4.2",
   control = list(
-    max.call = 500,
-    trace.mat = TRUE
+    sampler = "DEzs",
+    settings = list(
+      burnin = 500,
+      iterations = 3000
+    )
   ),
   par = list(
-    kphio = list( lower=0.03, upper=0.1, init= 0.05 ),
-    a = list( lower=0.0,  upper=1.0, init=0.0 ),
-    b = list( lower=0.0,  upper=1.5, init=0.6 )
+    kphio = list(lower=0.04, upper=0.1, init = 0.05),
+    a = list(lower=0, upper=5, init = 3.5),
+    b = list(lower=1, upper=5, init=3.5)
     )
 )
-```
 
-Change name after update implemented with v4.0.
-```{r}
-df_drivers_fluxnet2015 <- df_drivers_fluxnet2015 %>% 
-  mutate(forcing = purrr::map(forcing, ~rename(., rain = rainf, snow = snowf)))
+# # gensa
+# settings_calib <- list(
+#   method      = "gensa",
+#   targetvars  = c("gpp"),
+#   timescale   = list(targets_obs = "d"),
+#   metric      = cost_rmse_fullstack,
+#   dir_results = "./",
+#   name        = "v4.2",
+#   control = list(
+#     max.call = 100,
+#     trace.mat = TRUE
+#   ),
+#   par = list(
+#     kphio = list( lower=0.03, upper=0.1, init= 0.05 ),
+#     a = list( lower=0.0,  upper=1.0, init=0.0 ),
+#     b = list( lower=0.0,  upper=1.5, init=0.6 )
+#     )
+# )
 ```
 
 Calibrate the model.
 ```{r warning=FALSE, message=FALSE}
-# gensa
+# gensa with max.call = 5 - identical to stored benchmarking results
+#      kphio          a          b
+# 0.09423773 0.33349283 1.45602286
+
+# gensa with max.call = 100
 #      kphio          a          b 
 # 0.08977522 0.51426143 1.45602286 
 
-filn <- "~/sofunBench/tag_v4.0/pars_calib_v4.0_bayesiantools.rds"
+# bayesiantools with 500 iterations
+#      kphio          a          b 
+# 0.09165698 0.25141864 2.00004170 
+
+# bayesiantools with 3000 iterations
+#      kphio          a          b 
+# 0.08791485 0.59107163 2.60687991 
+
+filn <- "~/sofunBench/tag_v4.2/pars_calib_v4.2_bayesiantools.rds"
 if (!file.exists(filn)){
   set.seed(1982)
   pars <- calib_sofun(
@@ -191,13 +201,21 @@ params_modl <- list(
     kphio           = pars$par[1],
     soilm_par_a     = pars$par[2],
     soilm_par_b     = pars$par[3],
-    tau_acclim_tempstress = 10,  # irrelevant - not calibrated
-    par_shape_tempstress  = 0.1   # irrelevant - not calibrated
+    tau_acclim_tempstress = 10,   # irrelevant - not calibrated
+    par_shape_tempstress  = 0.0   # irrelevant - not calibrated
   )
 ```
 
 
 ## Run model
+
+Change variable names after version update.
+```{r}
+df_drivers_fluxnet2015 <- df_drivers_fluxnet2015 %>% 
+  mutate(forcing = purrr::map(forcing, ~rename(., rain = rainf, snow = snowf)))
+```
+
+`"~/data/rsofun_benchmarking/df_drivers_fluxnet2015_allsites.Rdata"` is prepared by `benchmarking/collect_data/prepare_inputs_FLUXNET2015_allsites.Rmd`.
 
 ```{r warning=FALSE, message=FALSE}
 output <- rsofun::runread_pmodel_f(
@@ -205,14 +223,14 @@ output <- rsofun::runread_pmodel_f(
   par = params_modl
   )
 
-saveRDS(output, file = "~/data/rsofun_benchmarking/output_v4.0.rds")
+saveRDS(output, file = "~/data/rsofun_benchmarking/output_v4.2.rds")
 ```
 
 ## Run evaluation
 
 Do evaluation only for sites where simulation was run.
 ```{r}
-evalsites <- df_output %>% 
+evalsites <- output %>% 
   mutate(ntsteps = purrr::map_dbl(data, ~nrow(.))) %>% 
   dplyr::filter(ntsteps > 0) %>% 
   pull(sitename)
@@ -234,15 +252,22 @@ settings_eval <- list(
 
 And finally run the evaluation.
 ```{r warning=FALSE, message=FALSE, error=FALSE}
-out_eval <- eval_sofun( 
-  df_output, 
-  settings_eval, 
-  settings_sims, 
-  obs_eval = obs_eval, 
-  overwrite = TRUE, 
-  light = FALSE 
-  )
-saveRDS(df_output, file = "~/data/rsofun_benchmarking/out_eval_v4.0.rds")
+source("~/sofunCalVal/R/eval_sofun.R")
+source("~/sofunCalVal/R/get_stats.R")
+filn <- "~/data/rsofun_benchmarking/out_eval_v4.2.rds"
+if (!file.exists(filn)){
+  out_eval <- eval_sofun( 
+    output, 
+    settings_eval, 
+    settings_sims, 
+    obs_eval = obs_eval, 
+    overwrite = TRUE, 
+    light = FALSE 
+    )
+  saveRDS(out_eval, file = filn)
+} else {
+  out_eval <- read_rds(filn)
+}
 ```
 
 ## Evaluation results
@@ -261,21 +286,6 @@ out_eval$gpp$fluxnet$metrics %>%
 out_eval$gpp$fluxnet$plot$gg_modobs_xdaily
 out_eval$gpp$fluxnet$plot$gg_modobs_spatial_annual
 ```
-## Run model for all sites.
-
-`"~/data/rsofun_benchmarking/df_drivers_fluxnet2015_allsites.Rdata"` is prepared by `benchmarking/collect_data/prepare_inputs_FLUXNET2015_allsites.Rmd`.
-
-```{r warning=FALSE, message=FALSE}
-load("~/data/rsofun_benchmarking/df_drivers_fluxnet2015_allsites.Rdata")
-df_output_allsites <- runread_pmodel_f(
-     df_drivers_fluxnet2015,
-     params_modl = params_modl, 
-     makecheck = TRUE,
-     parallel = FALSE
-     )
-saveRDS(df_output_allsites, file = "~/data/rsofun_benchmarking/df_output_allsites_v4.0.rds")
-```
-
 
 
 ## Appendix
