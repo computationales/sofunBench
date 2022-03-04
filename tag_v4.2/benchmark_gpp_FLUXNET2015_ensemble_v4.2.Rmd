@@ -391,6 +391,9 @@ df_drivers_rpmodel <- df_drivers_fluxnet2015 %>%
                                                        soilmstress = FALSE,
                                                        tempstress = FALSE)))
 
+params_modl$kphio = 0.049977
+params_modl$tau_acclim_tempstress = 1.0
+
 out_rsofun <- rsofun::runread_pmodel_f(
   df_drivers_rpmodel,
   par = params_modl
