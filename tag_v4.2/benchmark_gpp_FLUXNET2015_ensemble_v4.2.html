@@ -644,6 +644,8 @@ df_dday_agg %&gt;%
 <div id="consistency-with-rpmodel" class="section level2">
 <h2>Consistency with rpmodel</h2>
 <p>Since rsofun takes time series forcing, overwrite forcing with constant values corresponding to the arguments provided to <code>rpmodel::rpmodel()</code>.</p>
+<div id="setup-org" class="section level3">
+<h3>Setup ORG</h3>
 <pre class="r"><code>library(rpmodel)</code></pre>
 <pre><code>## 
 ## Attaching package: &#39;rpmodel&#39;</code></pre>
@@ -685,6 +687,9 @@ df_drivers_rpmodel &lt;- df_drivers_fluxnet2015 %&gt;%
                                                        soilmstress = FALSE,
                                                        tempstress = FALSE)))
 
+params_modl$kphio = 0.049977
+params_modl$tau_acclim_tempstress = 1.0
+
 out_rsofun &lt;- rsofun::runread_pmodel_f(
   df_drivers_rpmodel,
   par = params_modl
@@ -694,23 +699,91 @@ out_rsofun &lt;- rsofun::runread_pmodel_f(
   slice(1)
 
 ## ci:ca
-paste(&quot;ci:ca:&quot;, all.equal(out_pmodel$chi, out_rsofun$chi))</code></pre>
-<pre><code>## [1] &quot;ci:ca: Mean relative difference: 0.00444033&quot;</code></pre>
+paste(&quot;ci:ca:&quot;, all.equal(out_pmodel$chi, out_rsofun$chi, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;ci:ca: TRUE&quot;</code></pre>
 <pre class="r"><code>## GPP
-paste(&quot;GPP:&quot;, all.equal(out_pmodel$gpp, out_rsofun$gpp))</code></pre>
-<pre><code>## [1] &quot;GPP: Mean relative difference: 0.2338217&quot;</code></pre>
+paste(&quot;GPP:&quot;, all.equal(out_pmodel$gpp, out_rsofun$gpp, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;GPP: TRUE&quot;</code></pre>
 <pre class="r"><code>## Vcmax
-paste(&quot;Vcmax:&quot;, all.equal(out_pmodel$vcmax / (60*60*24), out_rsofun$vcmax))</code></pre>
-<pre><code>## [1] &quot;Vcmax: Mean relative difference: 0.2608525&quot;</code></pre>
+paste(&quot;Vcmax:&quot;, all.equal(out_pmodel$vcmax / (60*60*24), out_rsofun$vcmax, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Vcmax: TRUE&quot;</code></pre>
 <pre class="r"><code>## Vcmax25
-paste(&quot;Vcmax25:&quot;, all.equal(out_pmodel$vcmax25 / (60*60*24), out_rsofun$vcmax25))</code></pre>
-<pre><code>## [1] &quot;Vcmax25: Mean relative difference: 0.2608559&quot;</code></pre>
+paste(&quot;Vcmax25:&quot;, all.equal(out_pmodel$vcmax25 / (60*60*24), out_rsofun$vcmax25, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Vcmax25: TRUE&quot;</code></pre>
 <pre class="r"><code>## Jmax
-paste(&quot;Jmax:&quot;, all.equal(out_pmodel$jmax / (60*60*24), out_rsofun$jmax))</code></pre>
-<pre><code>## [1] &quot;Jmax: Mean relative difference: 0.2350198&quot;</code></pre>
+paste(&quot;Jmax:&quot;, all.equal(out_pmodel$jmax / (60*60*24), out_rsofun$jmax, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Jmax: TRUE&quot;</code></pre>
 <pre class="r"><code>## Jmax25
-paste(&quot;Jmax25:&quot;, all.equal(out_pmodel$jmax25 / (60*60*24), out_rsofun$jmax25))</code></pre>
-<pre><code>## [1] &quot;Jmax25: Mean relative difference: 0.235022&quot;</code></pre>
+paste(&quot;Jmax25:&quot;, all.equal(out_pmodel$jmax25 / (60*60*24), out_rsofun$jmax25, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Jmax25: TRUE&quot;</code></pre>
+</div>
+<div id="setup-brc" class="section level3">
+<h3>Setup BRC</h3>
+<pre class="r"><code>out_pmodel &lt;- rpmodel( 
+  tc             = 20,           # temperature, deg C
+  vpd            = 1000,         # Pa,
+  co2            = 400,          # ppm,
+  fapar          = 1,            # fraction  ,
+  ppfd           = 30,           # mol/m2/d,
+  elv            = 0,            # m.a.s.l.,
+  kphio          = 0.081785,     # quantum yield efficiency as calibrated for setup ORG by Stocker et al. 2020 GMD,
+  beta           = 146,          # unit cost ratio a/b,
+  c4             = FALSE,
+  method_jmaxlim = &quot;wang17&quot;,
+  do_ftemp_kphio = TRUE,        # corresponding to setup ORG
+  do_soilmstress = FALSE,        # corresponding to setup ORG
+  verbose        = TRUE
+  ) %&gt;% 
+  as_tibble()</code></pre>
+<pre><code>## Warning in rpmodel(tc = 20, vpd = 1000, co2 = 400, fapar = 1, ppfd = 30, : Atmospheric pressure (patm) not provided. Calculating it as a
+##       function of elevation (elv), assuming standard atmosphere 
+##       (101325 Pa at sea level).</code></pre>
+<pre class="r"><code>## overwrite forcing with constant conditions (for one site)
+df_drivers_rpmodel &lt;- df_drivers_fluxnet2015 %&gt;% 
+  slice(1) %&gt;% 
+  mutate(forcing = purrr::map(forcing, ~mutate(., 
+                                               temp = 20,
+                                               vpd = 1000,
+                                               ppfd = 30 / (60*60*24),
+                                               patm = rpmodel::calc_patm(0),
+                                               fapar = 1.0,
+                                               co2 = 400,
+                                               tmin = 20,
+                                               tmax = 20))) %&gt;% 
+  mutate(params_siml = purrr::map(params_siml, ~mutate(.,
+                                                       soilmstress = FALSE,
+                                                       tempstress = TRUE)))
+
+params_modl$kphio = 0.081785
+params_modl$tau_acclim_tempstress = 1.0
+
+out_rsofun &lt;- rsofun::runread_pmodel_f(
+  df_drivers_rpmodel,
+  par = params_modl
+  ) %&gt;% 
+  dplyr::select(data) %&gt;% 
+  unnest(data) %&gt;% 
+  slice(1)
+
+## ci:ca
+paste(&quot;ci:ca:&quot;, all.equal(out_pmodel$chi, out_rsofun$chi, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;ci:ca: TRUE&quot;</code></pre>
+<pre class="r"><code>## GPP
+paste(&quot;GPP:&quot;, all.equal(out_pmodel$gpp, out_rsofun$gpp, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;GPP: TRUE&quot;</code></pre>
+<pre class="r"><code>## Vcmax
+paste(&quot;Vcmax:&quot;, all.equal(out_pmodel$vcmax / (60*60*24), out_rsofun$vcmax, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Vcmax: TRUE&quot;</code></pre>
+<pre class="r"><code>## Vcmax25
+paste(&quot;Vcmax25:&quot;, all.equal(out_pmodel$vcmax25 / (60*60*24), out_rsofun$vcmax25, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Vcmax25: TRUE&quot;</code></pre>
+<pre class="r"><code>## Jmax
+paste(&quot;Jmax:&quot;, all.equal(out_pmodel$jmax / (60*60*24), out_rsofun$jmax, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Jmax: TRUE&quot;</code></pre>
+<pre class="r"><code>## Jmax25
+paste(&quot;Jmax25:&quot;, all.equal(out_pmodel$jmax25 / (60*60*24), out_rsofun$jmax25, tolerance = 1e-5))</code></pre>
+<pre><code>## [1] &quot;Jmax25: TRUE&quot;</code></pre>
+</div>
 </div>
 <div id="appendix" class="section level2">
 <h2>Appendix</h2>

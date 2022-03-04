@@ -356,6 +356,9 @@ df_dday_agg %>%
 ## Consistency with rpmodel
 
 Since rsofun takes time series forcing, overwrite forcing with constant values corresponding to the arguments provided to `rpmodel::rpmodel()`.
+
+### Setup ORG
+
 ```{r}
 library(rpmodel)
 out_pmodel <- rpmodel( 
@@ -403,22 +406,88 @@ out_rsofun <- rsofun::runread_pmodel_f(
   slice(1)
 
 ## ci:ca
-paste("ci:ca:", all.equal(out_pmodel$chi, out_rsofun$chi))
+paste("ci:ca:", all.equal(out_pmodel$chi, out_rsofun$chi, tolerance = 1e-5))
 
 ## GPP
-paste("GPP:", all.equal(out_pmodel$gpp, out_rsofun$gpp))
+paste("GPP:", all.equal(out_pmodel$gpp, out_rsofun$gpp, tolerance = 1e-5))
 
 ## Vcmax
-paste("Vcmax:", all.equal(out_pmodel$vcmax / (60*60*24), out_rsofun$vcmax))
+paste("Vcmax:", all.equal(out_pmodel$vcmax / (60*60*24), out_rsofun$vcmax, tolerance = 1e-5))
 
 ## Vcmax25
-paste("Vcmax25:", all.equal(out_pmodel$vcmax25 / (60*60*24), out_rsofun$vcmax25))
+paste("Vcmax25:", all.equal(out_pmodel$vcmax25 / (60*60*24), out_rsofun$vcmax25, tolerance = 1e-5))
 
 ## Jmax
-paste("Jmax:", all.equal(out_pmodel$jmax / (60*60*24), out_rsofun$jmax))
+paste("Jmax:", all.equal(out_pmodel$jmax / (60*60*24), out_rsofun$jmax, tolerance = 1e-5))
 
 ## Jmax25
-paste("Jmax25:", all.equal(out_pmodel$jmax25 / (60*60*24), out_rsofun$jmax25))
+paste("Jmax25:", all.equal(out_pmodel$jmax25 / (60*60*24), out_rsofun$jmax25, tolerance = 1e-5))
+```
+
+### Setup BRC
+
+```{r}
+out_pmodel <- rpmodel( 
+  tc             = 20,           # temperature, deg C
+  vpd            = 1000,         # Pa,
+  co2            = 400,          # ppm,
+  fapar          = 1,            # fraction  ,
+  ppfd           = 30,           # mol/m2/d,
+  elv            = 0,            # m.a.s.l.,
+  kphio          = 0.081785,     # quantum yield efficiency as calibrated for setup ORG by Stocker et al. 2020 GMD,
+  beta           = 146,          # unit cost ratio a/b,
+  c4             = FALSE,
+  method_jmaxlim = "wang17",
+  do_ftemp_kphio = TRUE,        # corresponding to setup ORG
+  do_soilmstress = FALSE,        # corresponding to setup ORG
+  verbose        = TRUE
+  ) %>% 
+  as_tibble()
+
+## overwrite forcing with constant conditions (for one site)
+df_drivers_rpmodel <- df_drivers_fluxnet2015 %>% 
+  slice(1) %>% 
+  mutate(forcing = purrr::map(forcing, ~mutate(., 
+                                               temp = 20,
+                                               vpd = 1000,
+                                               ppfd = 30 / (60*60*24),
+                                               patm = rpmodel::calc_patm(0),
+                                               fapar = 1.0,
+                                               co2 = 400,
+                                               tmin = 20,
+                                               tmax = 20))) %>% 
+  mutate(params_siml = purrr::map(params_siml, ~mutate(.,
+                                                       soilmstress = FALSE,
+                                                       tempstress = TRUE)))
+
+params_modl$kphio = 0.081785
+params_modl$tau_acclim_tempstress = 1.0
+
+out_rsofun <- rsofun::runread_pmodel_f(
+  df_drivers_rpmodel,
+  par = params_modl
+  ) %>% 
+  dplyr::select(data) %>% 
+  unnest(data) %>% 
+  slice(1)
+
+## ci:ca
+paste("ci:ca:", all.equal(out_pmodel$chi, out_rsofun$chi, tolerance = 1e-5))
+
+## GPP
+paste("GPP:", all.equal(out_pmodel$gpp, out_rsofun$gpp, tolerance = 1e-5))
+
+## Vcmax
+paste("Vcmax:", all.equal(out_pmodel$vcmax / (60*60*24), out_rsofun$vcmax, tolerance = 1e-5))
+
+## Vcmax25
+paste("Vcmax25:", all.equal(out_pmodel$vcmax25 / (60*60*24), out_rsofun$vcmax25, tolerance = 1e-5))
+
+## Jmax
+paste("Jmax:", all.equal(out_pmodel$jmax / (60*60*24), out_rsofun$jmax, tolerance = 1e-5))
+
+## Jmax25
+paste("Jmax25:", all.equal(out_pmodel$jmax25 / (60*60*24), out_rsofun$jmax25, tolerance = 1e-5))
 ```
 
 ## Appendix
