@@ -21,6 +21,7 @@ Get rsofun at tag v4.2 and install it.
 ```{r message=FALSE, warning=FALSE}
 # devtools::install_github("computationales/rsofun@v4.2")
 library(rsofun)
+versionname <- "v4.2"
 ```
 
 
@@ -89,7 +90,7 @@ calibsites <- siteinfo_fluxnet2015 %>%
 
 Use the [ingestr](https://github.com/stineb/ingestr) package once again, now for collecting calibration target data. I.e., GPP based on the nighttime flux decomposition method.
 ```{r warning=FALSE, message=FALSE}
-filn <- "~/data/rsofun_benchmarking/ddf_fluxnet_gpp.Rdata"
+filn <- paste0("~/data/rsofun_benchmarking/ddf_fluxnet_gpp_", versionname, ".rds")
 if (!file.exists(filn)){
   settings_ingestr_fluxnet <- list(
     dir_hh = "~/data/FLUXNET-2015_Tier1/20191024/HH/", 
@@ -109,9 +110,9 @@ if (!file.exists(filn)){
     settings = settings_ingestr_fluxnet,
     timescale = "d"
     )
-  save(ddf_fluxnet_gpp, file = filn)
+  saveRDS(ddf_fluxnet_gpp, file = filn)
 } else {
-  load(filn)
+  ddf_fluxnet_gpp <- readRDS(filn)
 }
 ```
 
@@ -177,7 +178,7 @@ Calibrate the model.
 #      kphio          a          b 
 # 0.08791485 0.59107163 2.60687991 
 
-filn <- "~/sofunBench/tag_v4.2/pars_calib_v4.2_bayesiantools.rds"
+filn <- paste0("~/sofunBench/tag_v4.2/pars_calib_", versionname, "_bayesiantools.rds")
 if (!file.exists(filn)){
   set.seed(1982)
   pars <- calib_sofun(
@@ -187,7 +188,7 @@ if (!file.exists(filn)){
     )
   saveRDS(pars, file = filn)
 } else {
-  pars <- read_rds(filn)
+  pars <- readRDS(filn)
 }
 ```
 
@@ -224,7 +225,13 @@ output <- rsofun::runread_pmodel_f(
   par = params_modl
   )
 
-saveRDS(output, file = "~/data/rsofun_benchmarking/output_v4.2.rds")
+saveRDS(output, file = paste0("~/data/rsofun_benchmarking/output_", versionname, ".rds"))
+write_csv(
+  output %>% 
+    dplyr::select(-site_info) %>% 
+    unnest(data),
+  file = paste0("~/data/rsofun_benchmarking/output_", versionname, ".csv")
+)
 ```
 
 ## Run evaluation
@@ -255,7 +262,7 @@ And finally run the evaluation.
 ```{r warning=FALSE, message=FALSE, error=FALSE}
 source("~/sofunCalVal/R/eval_sofun.R")
 source("~/sofunCalVal/R/get_stats.R")
-filn <- "~/data/rsofun_benchmarking/out_eval_v4.2_XXX.rds"
+filn <- paste0("~/data/rsofun_benchmarking/out_eval_", versionname, ".rds")
 if (!file.exists(filn)){
   out_eval <- eval_sofun( 
     output, 
@@ -267,7 +274,7 @@ if (!file.exists(filn)){
     )
   saveRDS(out_eval, file = filn)
 } else {
-  out_eval <- read_rds(filn)
+  out_eval <- readRDS(filn)
 }
 ```
 
